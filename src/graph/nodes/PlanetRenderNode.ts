@@ -29,20 +29,33 @@ export class PlanetRenderNode extends BaseNode {
   }
 
   override build(ctx: BuildContext): void {
-    // Use first planet's component for pipeline constants (one pipeline covers all planets of same resolution)
     const planets = this._scene.getEntitiesWith(PlanetComponent);
     const planet = planets[0]!.getComponent(PlanetComponent)!;
 
-    // ── Shader module ──────────────────────────────────────────────────────────
     const shaderModule = ctx.device.createShaderModule({ code: planetShaderSrc });
 
-    // ── Bind group layout: slot 0 = uniform buffer ─────────────────────────────
+    // ── Bind group layout ──────────────────────────────────────────────────────
+    // slot 0: viewProj + model + displace_scale (uniform, vertex)
+    // slot 1: terrain.height (read-only storage, vertex)
+    // slot 2: terrain.splat  (read-only storage, fragment)
     const bindGroupLayout = ctx.device.createBindGroupLayout({
-      entries: [{
-        binding: 0,
-        visibility: GPUShaderStage.VERTEX,
-        buffer: { type: 'uniform' },
-      }],
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: 'uniform' },
+        },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: { type: 'read-only-storage' },
+        },
+      ],
     });
 
     // ── Render pipeline ────────────────────────────────────────────────────────
@@ -69,16 +82,27 @@ export class PlanetRenderNode extends BaseNode {
       },
     });
 
-    // ── Uniform buffer: viewProj (64) + model (64) = 128 bytes ─────────────────
+    // ── Uniform buffer: viewProj(64) + model(64) + displace_scale(4) + pad(12) = 144 bytes ──
     this._uniformBuffer = this._resources.createBuffer('planet.uniform', {
-      size: 128,
+      size: 144,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+
+    // ── Terrain buffers (created by ComputeNoiseNode.build() before this) ──────
+    const heightBuffer = this._resources.getBuffer('terrain.height');
+    const splatBuffer  = this._resources.getBuffer('terrain.splat');
+    if (!heightBuffer || !splatBuffer) {
+      throw new Error('PlanetRenderNode.build(): terrain buffers not found — ensure ComputeNoiseNode.build() runs first');
+    }
 
     // ── Bind group ─────────────────────────────────────────────────────────────
     this._bindGroup = ctx.device.createBindGroup({
       layout: bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: this._uniformBuffer } }],
+      entries: [
+        { binding: 0, resource: { buffer: this._uniformBuffer } },
+        { binding: 1, resource: { buffer: heightBuffer } },
+        { binding: 2, resource: { buffer: splatBuffer } },
+      ],
     });
 
     // ── Index buffer ───────────────────────────────────────────────────────────
@@ -98,21 +122,26 @@ export class PlanetRenderNode extends BaseNode {
     if (planets.length === 0) return;
 
     const cam = this._scene.mainCamera.getComponent(CameraComponent)!;
-    const vp = cam.getVPMatrix(this._scene.mainCamera.transform.position);
+    const vp  = cam.getVPMatrix(this._scene.mainCamera.transform.position);
     ctx.device.queue.writeBuffer(this._uniformBuffer, 0, vp);
 
-    // Use first planet's model matrix (extend to per-draw in a future task)
-    const planet = planets[0]!;
+    const planet     = planets[0]!;
     const planetComp = planet.getComponent(PlanetComponent)!;
-    // Scale model matrix by radius; planet transform drives position/rotation
+
     const model = planet.transform.getWorldMatrix();
-    // Apply uniform scale for radius on top of transform
     const scaledModel = new Float32Array(16);
     scaledModel.set(model);
-    scaledModel[0] *= planetComp.radius;
-    scaledModel[5] *= planetComp.radius;
+    scaledModel[0]  *= planetComp.radius;
+    scaledModel[5]  *= planetComp.radius;
     scaledModel[10] *= planetComp.radius;
     ctx.device.queue.writeBuffer(this._uniformBuffer, 64, scaledModel);
+
+    // displace_scale + 3 padding floats at offset 128
+    ctx.device.queue.writeBuffer(
+      this._uniformBuffer,
+      128,
+      new Float32Array([planetComp.displaceScale, 0, 0, 0]),
+    );
   }
 
   override recordPass(encoder: GPUCommandEncoder, ctx: FrameContext): void {
@@ -142,9 +171,8 @@ export class PlanetRenderNode extends BaseNode {
   }
 }
 
-/** Generate index buffer for a UV sphere grid (rings × segments quads → 2 triangles each). */
 function buildSphereIndices(rings: number, segments: number): Uint32Array {
-  const cols = segments + 1;
+  const cols    = segments + 1;
   const indices = new Uint32Array(rings * segments * 6);
   let idx = 0;
   for (let i = 0; i < rings; i++) {
