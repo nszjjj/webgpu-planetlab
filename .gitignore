@@ -38,4 +38,4 @@ logs/
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.sw?.worktrees/

@@ -6,6 +6,7 @@ import type { ResourceManager } from '../../core/ResourceManager.ts';
 import type { PipelineManager } from '../../core/PipelineManager.ts';
 import { PlanetComponent } from '../../ecs/components/PlanetComponent.ts';
 import { CameraComponent } from '../../ecs/components/CameraComponent.ts';
+import { SunComponent } from '../../ecs/components/SunComponent.ts';
 import planetShaderSrc from '../../shaders/planet.wgsl?raw';
 
 export class PlanetRenderNode extends BaseNode {
@@ -42,7 +43,7 @@ export class PlanetRenderNode extends BaseNode {
       entries: [
         {
           binding: 0,
-          visibility: GPUShaderStage.VERTEX,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
           buffer: { type: 'uniform' },
         },
         {
@@ -72,19 +73,19 @@ export class PlanetRenderNode extends BaseNode {
       fragment: {
         module: shaderModule,
         entryPoint: 'fs_main',
-        targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }],
+        targets: [{ format: ctx.surfaceDesc.colorFormat }],
       },
       primitive: { topology: 'triangle-list', cullMode: 'back' },
       depthStencil: {
-        format: 'depth24plus',
+        format: ctx.surfaceDesc.depthFormat,
         depthWriteEnabled: true,
         depthCompare: 'less',
       },
     });
 
-    // ── Uniform buffer: viewProj(64) + model(64) + displace_scale(4) + pad(12) = 144 bytes ──
+    // ── Uniform buffer: viewProj(64) + model(64) + displace_scale(4) + pad(12) + sunDir(12) + pad(4) = 160 bytes ──
     this._uniformBuffer = this._resources.createBuffer('planet.uniform', {
-      size: 144,
+      size: 160,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -142,6 +143,17 @@ export class PlanetRenderNode extends BaseNode {
       128,
       new Float32Array([planetComp.displaceScale, 0, 0, 0]),
     );
+
+    // sunDir at offset 144 (vec3<f32> + 1 pad float = 16 bytes)
+    const sunEntities = this._scene.getEntitiesWith(SunComponent);
+    const sunPos = sunEntities[0]?.getComponent(SunComponent)?.worldPosition ?? [100, 50, 0];
+    const dx = sunPos[0], dy = sunPos[1], dz = sunPos[2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    ctx.device.queue.writeBuffer(
+      this._uniformBuffer,
+      144,
+      new Float32Array([dx / len, dy / len, dz / len, 0]),
+    );
   }
 
   override recordPass(encoder: GPUCommandEncoder, ctx: FrameContext): void {
@@ -150,7 +162,7 @@ export class PlanetRenderNode extends BaseNode {
 
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
-        view: ctx.targetView,
+        view: ctx.sceneColorView,
         clearValue: { r: 0.02, g: 0.02, b: 0.05, a: 1 },
         loadOp: 'clear',
         storeOp: 'store',

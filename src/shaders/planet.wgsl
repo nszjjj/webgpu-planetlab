@@ -1,19 +1,22 @@
 // Planet render shader — vertex displacement via height_buffer, fragment color via splat_buffer.
-// Uniform layout: viewProj (64) + model (64) + displace_scale (4) + pad×3 (12) = 144 bytes.
+// Uniform layout: viewProj(64) + model(64) + displace_scale(4) + pad×3(12) + sunDir(12) + pad(4) = 160 bytes.
 
 const PI              : f32 = 3.14159265358979323846;
 const TERRAIN_RES     : u32 = 512u;
+const AMBIENT         : f32 = 0.30;  // minimum light on dark side
 
 override rings    : u32 = 128u;
 override segments : u32 = 128u;
 
 struct Uniforms {
-  viewProj       : mat4x4<f32>,
-  model          : mat4x4<f32>,
-  displace_scale : f32,
-  _pad0          : f32,
-  _pad1          : f32,
-  _pad2          : f32,
+  viewProj       : mat4x4<f32>,   // offset   0
+  model          : mat4x4<f32>,   // offset  64
+  displace_scale : f32,           // offset 128
+  _pad0          : f32,           // offset 132
+  _pad1          : f32,           // offset 136
+  _pad2          : f32,           // offset 140
+  sunDir         : vec3<f32>,     // offset 144  (vec3 align=16, 144/16=9 ✓)
+  _pad3          : f32,           // offset 156
 }
 
 @group(0) @binding(0) var<uniform>       uniforms      : Uniforms;
@@ -76,6 +79,12 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-  let mask = splat_buffer[sphere_pos_to_index(in.spherePos)];
-  return vec4<f32>(splat_to_color(mask), 1.0);
+  let mask   = splat_buffer[sphere_pos_to_index(in.spherePos)];
+  let albedo = splat_to_color(mask);
+
+  // Lambert diffuse with ambient floor
+  let NdotL   = max(dot(normalize(in.normal), normalize(uniforms.sunDir)), 0.0);
+  let diffuse = AMBIENT + (1.0 - AMBIENT) * NdotL;
+
+  return vec4<f32>(albedo * diffuse, 1.0);
 }
