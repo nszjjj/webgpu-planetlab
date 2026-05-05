@@ -67,6 +67,8 @@ export class AtmosphereNode extends BaseNode {
           texture: { sampleType: 'float', viewDimension: '2d' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT,
           texture: { sampleType: 'depth', viewDimension: '2d' } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT,   // cloud colour (rgba16float)
+          texture: { sampleType: 'float', viewDimension: '2d' } },
       ],
     });
 
@@ -103,6 +105,7 @@ export class AtmosphereNode extends BaseNode {
         { binding: 0, resource: { buffer: this._uniformBuffer } },
         { binding: 1, resource: surfaceRes.getView('scene.color') },
         { binding: 2, resource: surfaceRes.getView('scene.depth') },
+        { binding: 3, resource: surfaceRes.getView('cloud.color') },
       ],
     });
   }

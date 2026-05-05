@@ -90,12 +90,38 @@ export interface AtmosphereParams {
 
 export const DEFAULT_ATMOSPHERE_PARAMS: AtmosphereParams = {
   planetRadius: 1.0,
-  atmosphereRadius: 1.10,
-  // betaR in scene-units (planet radius = 1.0), not physical meters.
-  // Ratio preserved from Rayleigh λ⁻⁴: ~1 : 2.3 : 5.7
-  betaR: [0.08, 0.18, 0.45],
-  betaM: 0.06,
+  atmosphereRadius: 1.12,
+  // betaR normalized from Nishita (1993) for unit-sphere planet with H_R=0.08.
+  // Ratio preserved from Rayleigh λ⁻⁴: ~1 : 2.4 : 4.1
+  betaR: [0.15, 0.35, 0.86],
+  betaM: 0.08,
   mieG: 0.76,
   numSamples: 16,
   numLightSamples: 8,
+};
+
+export interface CloudParams {
+  cloudInnerRadius:  number;   // inner shell edge (planet units)
+  cloudOuterRadius:  number;   // outer shell edge — extensible to multi-layer in Phase 2
+  extinction:        number;   // total attenuation coefficient
+  scatterAlbedo:     number;   // scatter / extinction ratio
+  mieG:              number;   // Henyey-Greenstein asymmetry parameter
+  scaleHeight:       number;   // vertical density falloff within shell [0,1]
+  timeOffset:        number;   // FBM time drift for animation (Phase 1 = 0)
+  numSteps:          number;   // ray march steps per pixel
+  coverageFreq:      number;   // FBM frequency for coverage pattern
+  coverageThreshold: number;   // density below this value = no cloud
+}
+
+export const DEFAULT_CLOUD_PARAMS: CloudParams = {
+  cloudInnerRadius:  1.03,
+  cloudOuterRadius:  1.08,
+  extinction:        8.0,
+  scatterAlbedo:     0.9,
+  mieG:              0.6,
+  scaleHeight:       0.3,
+  timeOffset:        0.0,
+  numSteps:          32,
+  coverageFreq:      3.0,
+  coverageThreshold: 0.45,
 };

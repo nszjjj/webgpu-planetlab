@@ -3,9 +3,9 @@
 // Planet is centered at world origin. Planet radius = 1.0 scene unit.
 
 const PI  : f32 = 3.14159265358979323846;
-const H_R : f32 = 0.025;   // Rayleigh scale height (fraction of planet radius)
-const H_M : f32 = 0.008;   // Mie scale height
-const SCATTER_SCALE : f32 = 5.0;   // artistic scale; tune if atmosphere is too faint/bright
+const H_R : f32 = 0.08;    // Rayleigh scale height (fraction of planet radius)
+const H_M : f32 = 0.012;   // Mie scale height
+const SCATTER_SCALE : f32 = 6.0;  // artistic scale; tune if atmosphere is too faint/bright
 
 struct AtmosphereUniforms {
   sunDir           : vec3<f32>,   // offset  0
@@ -28,6 +28,7 @@ struct AtmosphereUniforms {
 @group(0) @binding(0) var<uniform> atm        : AtmosphereUniforms;
 @group(0) @binding(1) var          sceneColor : texture_2d<f32>;
 @group(0) @binding(2) var          sceneDepth : texture_depth_2d;
+@group(0) @binding(3) var          cloudColor : texture_2d<f32>;
 
 // --- Vertex shader: full-screen quad (6 vertices, no VBO) ---
 
@@ -85,6 +86,27 @@ fn optical_depth(pos: vec3<f32>, dir: vec3<f32>, maxDist: f32, steps: u32) -> ve
     p     += dir * stepLen;
   }
   return depth;
+}
+
+const DEPTH_SIGMA : f32 = 10.0;  // weight decay per NDC depth unit; tune if cloud edges bleed across depth discontinuities
+
+// Bilateral upsample: 2×2 cloud texels weighted by depth similarity.
+// centerDepth is sampled directly from texel to avoid half-res coordinate truncation mismatches.
+fn bilateral_cloud(texel: vec2<i32>, cloudTexel: vec2<i32>) -> vec4<f32> {
+  let centerDepth = textureLoad(sceneDepth, texel, 0);
+  let maxCoord    = vec2<i32>(textureDimensions(cloudColor)) - vec2<i32>(1, 1);
+  var weightSum   = 0.0;
+  var result      = vec4(0.0);
+  for (var dy = 0; dy <= 1; dy++) {
+    for (var dx = 0; dx <= 1; dx++) {
+      let nc = clamp(cloudTexel + vec2<i32>(dx, dy), vec2<i32>(0, 0), maxCoord);
+      let d  = textureLoad(sceneDepth, nc * 2, 0);
+      let w  = exp(-abs(d - centerDepth) * DEPTH_SIGMA);
+      result   += w * textureLoad(cloudColor, nc, 0);
+      weightSum += w;
+    }
+  }
+  return result / max(weightSum, 1e-6);
 }
 
 // --- Fragment shader ---
@@ -171,5 +193,9 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
   let viewT      = exp(-viewTau);
   let finalColor = color * viewT + inScatter;
 
-  return vec4<f32>(finalColor, 1.0);
+  // Bilateral upsample cloud RT and composite on top of atmosphere
+  let cloudTexel = texel / 2;
+  let cloud      = bilateral_cloud(texel, cloudTexel);
+  let composite  = cloud.rgb + finalColor * cloud.a;
+  return vec4<f32>(composite, 1.0);
 }

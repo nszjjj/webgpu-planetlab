@@ -7,13 +7,16 @@ import { PlanetComponent }       from '../ecs/components/PlanetComponent.ts';
 import { SunComponent }          from '../ecs/components/SunComponent.ts';
 import { ComputeNoiseNode }      from './nodes/ComputeNoiseNode.ts';
 import { PlanetRenderNode }      from './nodes/PlanetRenderNode.ts';
+import { CloudCoverageNode }     from './nodes/CloudCoverageNode.ts';
+import { CloudRenderNode }       from './nodes/CloudRenderNode.ts';
 import { AtmosphereNode }        from './nodes/AtmosphereNode.ts';
+import { DebugWireframeNode }    from './nodes/DebugWireframeNode.ts';
 import { OrbitCameraController } from '../controllers/OrbitCameraController.ts';
 import type { BuildContext }     from '../core/types.ts';
 import type { WebGPUEngine }     from '../core/WebGPUEngine.ts';
 
 export class GraphBuilder {
-  static build(engine: WebGPUEngine, canvas: HTMLCanvasElement): void {
+  static build(engine: WebGPUEngine, canvas: HTMLCanvasElement): { debugWireframe: DebugWireframeNode } {
     const { device, resources, pipelines } = engine;
     const surfaceRes  = engine.getSurfaceResources(0);
     const surfaceDesc = engine.surfaceDescriptor;
@@ -56,20 +59,31 @@ export class GraphBuilder {
     const buildCtx: BuildContext = { device, resources, surfaceRes, surfaceDesc, pipelines, scene };
 
     // ── Nodes ─────────────────────────────────────────────────────────────────
-    // 顺序：ComputeNoise（terrain）→ PlanetRender（scene RT）→ Atmosphere（合成）
-    const noiseNode  = new ComputeNoiseNode(resources, pipelines);
-    const planetNode = new PlanetRenderNode(scene, resources, pipelines);
-    const atmosNode  = new AtmosphereNode(scene, resources, pipelines);
+    // 顺序：ComputeNoise（terrain）→ PlanetRender（scene RT）→ CloudCoverage → CloudRender → Atmosphere（合成）
+    const noiseNode         = new ComputeNoiseNode(resources, pipelines);
+    const planetNode        = new PlanetRenderNode(scene, resources, pipelines);
+    const cloudCoverageNode = new CloudCoverageNode(resources, pipelines);
+    const cloudRenderNode   = new CloudRenderNode(scene, resources, pipelines);
+    const atmosNode         = new AtmosphereNode(scene, resources, pipelines);
+    const debugWireframe    = new DebugWireframeNode(resources, pipelines);
 
+    // Build order matters: cloudRenderNode registers 'cloud.color' which atmosNode reads
     noiseNode.build(buildCtx);
     planetNode.build(buildCtx);
+    cloudCoverageNode.build(buildCtx);
+    cloudRenderNode.build(buildCtx);
     atmosNode.build(buildCtx);
+    debugWireframe.build(buildCtx);
 
     const graph = new RenderGraph(scene);
     graph.addNode(noiseNode);
     graph.addNode(planetNode);
+    graph.addNode(cloudCoverageNode);
+    graph.addNode(cloudRenderNode);
     graph.addNode(atmosNode);
+    graph.addNode(debugWireframe);
 
     engine.setGraph(graph);
+    return { debugWireframe };
   }
 }

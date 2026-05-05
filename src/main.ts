@@ -3,6 +3,7 @@ import { initWebGPU }           from './core/initWebGPU.ts';
 import { CanvasSurfaceManager } from './core/CanvasSurfaceManager.ts';
 import { WebGPUEngine }         from './core/WebGPUEngine.ts';
 import { GraphBuilder }         from './graph/GraphBuilder.ts';
+import { DebugHUD }             from './ui/DebugHUD.ts';
 
 async function main(): Promise<void> {
   const canvas  = document.getElementById('webgpu-canvas') as HTMLCanvasElement;
@@ -10,8 +11,9 @@ async function main(): Promise<void> {
   const surface = new CanvasSurfaceManager(canvas, device);
   const engine  = new WebGPUEngine(device);
   engine.addSurface(surface);
-  GraphBuilder.build(engine, canvas);
+  const { debugWireframe } = GraphBuilder.build(engine, canvas);
   engine.start();
+  new DebugHUD(debugWireframe);
 }
 
 main().catch((err: unknown) => {
