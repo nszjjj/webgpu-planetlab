@@ -44,7 +44,7 @@ export class CloudRenderNode extends BaseNode {
     this._scene     = scene;
     this._resources = resources;
     this._pipelines = pipelines;
-    this._params    = { ...params };
+    this._params    = params;
     this._uniformDV = new DataView(this._uniformData.buffer);
   }
 

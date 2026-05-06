@@ -12,12 +12,14 @@ import { CloudRenderNode }       from './nodes/CloudRenderNode.ts';
 import { AtmosphereNode }        from './nodes/AtmosphereNode.ts';
 import { DebugWireframeNode }    from './nodes/DebugWireframeNode.ts';
 import { OrbitCameraController } from '../controllers/OrbitCameraController.ts';
-import type { BuildContext }     from '../core/types.ts';
+import type { BuildContext, CloudParams } from '../core/types.ts';
+import { DEFAULT_CLOUD_PARAMS }          from '../core/types.ts';
 import type { WebGPUEngine }     from '../core/WebGPUEngine.ts';
 
 export class GraphBuilder {
-  static build(engine: WebGPUEngine, canvas: HTMLCanvasElement): { debugWireframe: DebugWireframeNode } {
+  static build(engine: WebGPUEngine, canvas: HTMLCanvasElement): { debugWireframe: DebugWireframeNode; cloudParams: CloudParams } {
     const { device, resources, pipelines } = engine;
+    const cloudParams: CloudParams = { ...DEFAULT_CLOUD_PARAMS };
     const surfaceRes  = engine.getSurfaceResources(0);
     const surfaceDesc = engine.surfaceDescriptor;
 
@@ -62,8 +64,8 @@ export class GraphBuilder {
     // 顺序：ComputeNoise（terrain）→ PlanetRender（scene RT）→ CloudCoverage → CloudRender → Atmosphere（合成）
     const noiseNode         = new ComputeNoiseNode(resources, pipelines);
     const planetNode        = new PlanetRenderNode(scene, resources, pipelines);
-    const cloudCoverageNode = new CloudCoverageNode(resources, pipelines);
-    const cloudRenderNode   = new CloudRenderNode(scene, resources, pipelines);
+    const cloudCoverageNode = new CloudCoverageNode(resources, pipelines, cloudParams);
+    const cloudRenderNode   = new CloudRenderNode(scene, resources, pipelines, cloudParams);
     const atmosNode         = new AtmosphereNode(scene, resources, pipelines);
     const debugWireframe    = new DebugWireframeNode(resources, pipelines);
 
@@ -84,6 +86,6 @@ export class GraphBuilder {
     graph.addNode(debugWireframe);
 
     engine.setGraph(graph);
-    return { debugWireframe };
+    return { debugWireframe, cloudParams };
   }
 }

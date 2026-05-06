@@ -11,9 +11,11 @@ async function main(): Promise<void> {
   const surface = new CanvasSurfaceManager(canvas, device);
   const engine  = new WebGPUEngine(device);
   engine.addSurface(surface);
-  const { debugWireframe } = GraphBuilder.build(engine, canvas);
+  const { debugWireframe, cloudParams } = GraphBuilder.build(engine, canvas);
   engine.start();
-  new DebugHUD(debugWireframe);
+  if (import.meta.env.DEV) {
+    new DebugHUD(debugWireframe, cloudParams);
+  }
 }
 
 main().catch((err: unknown) => {

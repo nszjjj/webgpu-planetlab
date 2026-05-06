@@ -30,7 +30,7 @@ export class CloudCoverageNode extends BaseNode {
     super();
     this._resources = resources;
     this._pipelines = pipelines;
-    this._params    = { ...params };
+    this._params    = params;
   }
 
   override build(ctx: BuildContext): void {
