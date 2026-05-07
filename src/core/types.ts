@@ -125,3 +125,31 @@ export const DEFAULT_CLOUD_PARAMS: CloudParams = {
   coverageFreq:      3.0,
   coverageThreshold: 0.45,
 };
+
+export interface MaterialParam {
+  roughness: number;
+  metallic: number;
+}
+
+export interface MaterialParams {
+  materials: [MaterialParam, ...MaterialParam[]];
+  lightColor: [number, number, number];
+  lightIntensity: number;
+}
+
+export const DEFAULT_MATERIAL_PARAMS: MaterialParams = {
+  materials: [
+    { roughness: 0.20, metallic: 0.30 },   // water  — bit 0
+    { roughness: 0.70, metallic: 0.00 },   // sand   — bit 1
+    { roughness: 0.80, metallic: 0.00 },   // grass  — bit 2
+    { roughness: 0.55, metallic: 0.05 },   // rock   — bit 3
+    { roughness: 0.45, metallic: 0.00 },   // snow   — bit 4
+    { roughness: 0.50, metallic: 0.00 },   // reserved 5
+    { roughness: 0.50, metallic: 0.00 },   // reserved 6
+    { roughness: 0.50, metallic: 0.00 },   // reserved 7
+    { roughness: 0.50, metallic: 0.00 },   // reserved 8
+    { roughness: 0.50, metallic: 0.00 },   // reserved 9
+  ],
+  lightColor: [1.0, 0.95, 0.85],
+  lightIntensity: 2.0,
+};

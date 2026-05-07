@@ -64,7 +64,7 @@ export class DebugWireframeNode extends BaseNode {
       },
     });
 
-    const uniformBuffer = this._resources.getBuffer('planet.uniform')!;
+    const uniformBuffer = this._resources.getBuffer('planet.perFrame')!;
     const heightBuffer  = this._resources.getBuffer('terrain.height')!;
 
     this._bindGroup = ctx.device.createBindGroup({

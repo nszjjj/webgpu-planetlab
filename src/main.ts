@@ -11,10 +11,10 @@ async function main(): Promise<void> {
   const surface = new CanvasSurfaceManager(canvas, device);
   const engine  = new WebGPUEngine(device);
   engine.addSurface(surface);
-  const { debugWireframe, cloudParams } = GraphBuilder.build(engine, canvas);
+  const { debugWireframe, cloudParams, materialParams } = GraphBuilder.build(engine, canvas);
   engine.start();
   if (import.meta.env.DEV) {
-    new DebugHUD(debugWireframe, cloudParams);
+    new DebugHUD(debugWireframe, cloudParams, materialParams);
   }
 }
 
