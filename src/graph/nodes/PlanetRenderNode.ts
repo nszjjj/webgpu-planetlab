@@ -8,6 +8,7 @@ import type { PipelineManager } from '../../core/PipelineManager.ts';
 import { PlanetComponent } from '../../ecs/components/PlanetComponent.ts';
 import { CameraComponent } from '../../ecs/components/CameraComponent.ts';
 import { SunComponent } from '../../ecs/components/SunComponent.ts';
+import { generateIcosphere } from '../../utils/icosphere.ts';
 import planetShaderSrc from '../../shaders/planet.wgsl?raw';
 
 const PERFRAME_SIZE = 208;
@@ -23,6 +24,7 @@ export class PlanetRenderNode extends BaseNode {
   private _perFrameBuffer!: GPUBuffer;
   private _materialBuffer!: GPUBuffer;
   private _bindGroup!:      GPUBindGroup;
+  private _vertexBuffer!:   GPUBuffer;
   private _indexBuffer!:    GPUBuffer;
   private _indexCount = 0;
 
@@ -79,10 +81,15 @@ export class PlanetRenderNode extends BaseNode {
       vertex: {
         module:     shaderModule,
         entryPoint: 'vs_main',
-        constants: {
-          rings:    planet.rings,
-          segments: planet.segments,
-        },
+        buffers: [{
+          arrayStride: 12,  // 3 × f32
+          stepMode:    'vertex',
+          attributes: [{
+            shaderLocation: 0,
+            offset:         0,
+            format:         'float32x3',
+          }],
+        }],
       },
       fragment: {
         module:     shaderModule,
@@ -123,14 +130,24 @@ export class PlanetRenderNode extends BaseNode {
       ],
     });
 
-    const indices = buildSphereIndices(planet.rings, planet.segments);
-    this._indexCount = indices.length;
+    // ── Icosphere mesh ──────────────────────────────────────────────────────
+    const mesh = generateIcosphere(planet.subdivisions);
+
+    this._vertexBuffer = this._resources.createBuffer('planet.vertices', {
+      size:             mesh.vertices.byteLength,
+      usage:            GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      mappedAtCreation: true,
+    });
+    new Float32Array(this._vertexBuffer.getMappedRange()).set(mesh.vertices);
+    this._vertexBuffer.unmap();
+
+    this._indexCount = mesh.indices.length;
     this._indexBuffer = this._resources.createBuffer('planet.index', {
-      size:             indices.byteLength,
+      size:             mesh.indices.byteLength,
       usage:            GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
       mappedAtCreation: true,
     });
-    new Uint32Array(this._indexBuffer.getMappedRange()).set(indices);
+    new Uint32Array(this._indexBuffer.getMappedRange()).set(mesh.indices);
     this._indexBuffer.unmap();
   }
 
@@ -215,25 +232,9 @@ export class PlanetRenderNode extends BaseNode {
 
     pass.setPipeline(this._pipeline);
     pass.setBindGroup(0, this._bindGroup);
+    pass.setVertexBuffer(0, this._vertexBuffer);
     pass.setIndexBuffer(this._indexBuffer, 'uint32');
     pass.drawIndexed(this._indexCount);
     pass.end();
   }
-}
-
-function buildSphereIndices(rings: number, segments: number): Uint32Array {
-  const cols    = segments + 1;
-  const indices = new Uint32Array(rings * segments * 6);
-  let idx = 0;
-  for (let i = 0; i < rings; i++) {
-    for (let j = 0; j < segments; j++) {
-      const a = i * cols + j;
-      const b = (i + 1) * cols + j;
-      const c = i * cols + j + 1;
-      const d = (i + 1) * cols + j + 1;
-      indices[idx++] = a; indices[idx++] = b; indices[idx++] = c;
-      indices[idx++] = b; indices[idx++] = d; indices[idx++] = c;
-    }
-  }
-  return indices;
 }

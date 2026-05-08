@@ -1,8 +1,5 @@
-const PI          : f32 = 3.14159265358979323846;
-const TERRAIN_RES : u32 = 512u;
-
-override rings    : u32 = 128u;
-override segments : u32 = 128u;
+const PI       : f32 = 3.14159265358979323846;
+const OCTA_RES  : u32 = 512u;
 
 struct Uniforms {
   viewProj       : mat4x4<f32>,
@@ -18,36 +15,35 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform>       uniforms      : Uniforms;
 @group(0) @binding(1) var<storage, read> height_buffer : array<f32>;
 
+struct VertexInput {
+  @location(0) position : vec3<f32>,
+}
+
 struct WireVertexOut {
   @builtin(position) clipPosition : vec4<f32>,
 }
 
-fn sphere_pos_to_index(p: vec3<f32>) -> u32 {
-  let n     = normalize(p);
-  let theta = acos(clamp(n.y, -1.0, 1.0));
-  var phi   = atan2(n.z, n.x);
-  if (phi < 0.0) { phi += 2.0 * PI; }
-  let i = u32(clamp(theta / PI * f32(TERRAIN_RES - 1u), 0.0, f32(TERRAIN_RES - 1u)));
-  let j = u32(clamp(phi / (2.0 * PI) * f32(TERRAIN_RES - 1u), 0.0, f32(TERRAIN_RES - 1u)));
-  return i * TERRAIN_RES + j;
+fn oct_encode(n: vec3<f32>) -> vec2<f32> {
+  let absSum = abs(n.x) + abs(n.y) + abs(n.z);
+  var p = vec2<f32>(n.x, n.y) / absSum;
+  if (n.z < 0.0) {
+    p = (vec2<f32>(1.0) - abs(p.yx)) * select(vec2(-1.0), vec2(1.0), p >= vec2(0.0));
+  }
+  return p * 0.5 + 0.5;
+}
+
+fn oct_to_index(n: vec3<f32>) -> u32 {
+  let uv = oct_encode(normalize(n));
+  let i  = u32(clamp(uv.y * f32(OCTA_RES), 0.0, f32(OCTA_RES - 1u)));
+  let j  = u32(clamp(uv.x * f32(OCTA_RES), 0.0, f32(OCTA_RES - 1u)));
+  return i * OCTA_RES + j;
 }
 
 @vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> WireVertexOut {
-  let cols = segments + 1u;
-  let i    = vertexIndex / cols;
-  let j    = vertexIndex % cols;
+fn vs_main(in: VertexInput) -> WireVertexOut {
+  let localPos = in.position;
 
-  let theta = f32(i) / f32(rings)    * PI;
-  let phi   = f32(j) / f32(segments) * 2.0 * PI;
-
-  let localPos = vec3<f32>(
-    sin(theta) * cos(phi),
-    cos(theta),
-    sin(theta) * sin(phi),
-  );
-
-  let h         = height_buffer[sphere_pos_to_index(localPos)];
+  let h         = height_buffer[oct_to_index(localPos)];
   let displaced = localPos * (1.0 + h * uniforms.displace_scale);
 
   let worldPos = (uniforms.model * vec4<f32>(displaced, 1.0)).xyz;

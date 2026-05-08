@@ -1,8 +1,8 @@
 // Pass B: read terrain.height → write terrain.splat (u32 bit-mask per texel)
 // Bit layout: 0=water 1=sand 2=grass 3=rock 4=snow 5=ore_iron 6=ore_rare
 
-const PI         : f32 = 3.14159265358979323846;
-const RESOLUTION : u32 = 512u;
+const PI       : f32 = 3.14159265358979323846;
+const OCTA_RES : u32 = 512u;
 
 struct ClassifyParams {
   water_max          : f32,
@@ -37,11 +37,23 @@ fn noise3(p: vec3<f32>) -> f32 {
   );
 }
 
+fn oct_decode(uv: vec2<f32>) -> vec3<f32> {
+  let p = uv * 2.0 - 1.0;
+  let z = 1.0 - abs(p.x) - abs(p.y);
+  var n: vec3<f32>;
+  if (z >= 0.0) {
+    n = vec3<f32>(p.x, p.y, z);
+  } else {
+    n = vec3<f32>((1.0 - abs(p.y)) * select(-1.0, 1.0, p.x >= 0.0), (1.0 - abs(p.x)) * select(-1.0, 1.0, p.y >= 0.0), z);
+  }
+  return normalize(n);
+}
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x >= RESOLUTION || gid.y >= RESOLUTION) { return; }
+  if (gid.x >= OCTA_RES || gid.y >= OCTA_RES) { return; }
 
-  let index = gid.x * RESOLUTION + gid.y;
+  let index = gid.x * OCTA_RES + gid.y;
   let h     = height_buffer[index];
 
   var mask: u32 = 0u;
@@ -60,9 +72,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // Ore: independent high-frequency noise; only in grass (4) or rock (8) areas
-  let theta = f32(gid.x) / f32(RESOLUTION - 1u) * PI;
-  let phi   = f32(gid.y) / f32(RESOLUTION - 1u) * 2.0 * PI;
-  let pos   = vec3<f32>(sin(theta) * cos(phi), cos(theta), sin(theta) * sin(phi));
+  let uv    = vec2<f32>((f32(gid.y) + 0.5) / f32(OCTA_RES), (f32(gid.x) + 0.5) / f32(OCTA_RES));
+  let pos   = oct_decode(uv);
   let ore_n = noise3(pos * params.ore_noise_freq);
 
   if (ore_n > params.ore_iron_threshold && (mask & 12u) != 0u) {

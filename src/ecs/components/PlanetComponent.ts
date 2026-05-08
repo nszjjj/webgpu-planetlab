@@ -1,13 +1,11 @@
 export class PlanetComponent {
   radius: number;
-  rings: number;
-  segments: number;
+  subdivisions: number;   // icosphere subdivision level (5 ≈ 10K verts)
   displaceScale: number;
 
-  constructor(radius = 1.0, rings = 128, segments = 128, displaceScale = 0.15) {
+  constructor(radius = 1.0, subdivisions = 5, displaceScale = 0.15) {
     this.radius = radius;
-    this.rings = rings;
-    this.segments = segments;
+    this.subdivisions = subdivisions;
     this.displaceScale = displaceScale;
   }
 }

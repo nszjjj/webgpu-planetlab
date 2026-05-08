@@ -4,7 +4,7 @@ import type { BuildContext, FrameContext, NoiseParams, ClassifyParams } from '..
 import { DEFAULT_NOISE_PARAMS, DEFAULT_CLASSIFY_PARAMS } from '../../core/types.ts';
 import type { ResourceManager } from '../../core/ResourceManager.ts';
 import type { PipelineManager } from '../../core/PipelineManager.ts';
-import { TERRAIN_RESOLUTION } from '../../utils/terrainCoords.ts';
+import { OCTA_RESOLUTION } from '../../utils/octahedral.ts';
 import noiseGenSrc from '../../shaders/noise_gen.wgsl?raw';
 import classifySrc from '../../shaders/terrain_classify.wgsl?raw';
 
@@ -38,7 +38,7 @@ export class ComputeNoiseNode extends BaseNode {
   }
 
   override build(ctx: BuildContext): void {
-    const BUFFER_SIZE = TERRAIN_RESOLUTION * TERRAIN_RESOLUTION * 4; // f32 or u32 = 4 bytes each
+    const BUFFER_SIZE = OCTA_RESOLUTION * OCTA_RESOLUTION * 4; // f32 or u32 = 4 bytes each
 
     // ── Shared terrain buffers (consumed by PlanetRenderNode) ──────────────────
     const heightBuffer = this._resources.createBuffer('terrain.height', {
@@ -124,7 +124,7 @@ export class ComputeNoiseNode extends BaseNode {
   override recordPass(encoder: GPUCommandEncoder, _ctx: FrameContext): void {
     if (this._generated) return;
 
-    const WG = Math.ceil(TERRAIN_RESOLUTION / 8); // 64 workgroups per axis
+    const WG = Math.ceil(OCTA_RESOLUTION / 8); // 64 workgroups per axis
 
     // Pass A: generate height
     const passA = encoder.beginComputePass();

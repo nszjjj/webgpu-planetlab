@@ -49,7 +49,7 @@ export class GraphBuilder {
 
     const planet = new Entity('planet');
     planet.transform.setPosition(0, 0, 0);
-    planet.addComponent(new PlanetComponent(1.0, 128, 128));
+    planet.addComponent(new PlanetComponent(1.0, 5));  // icosphere subdiv 5
     scene.addEntity(planet);
 
     const camera = new Entity('camera');

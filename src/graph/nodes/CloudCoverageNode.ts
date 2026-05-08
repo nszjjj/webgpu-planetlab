@@ -6,9 +6,8 @@ import type { ResourceManager } from '../../core/ResourceManager.ts';
 import type { PipelineManager } from '../../core/PipelineManager.ts';
 import cloudCoverageSrc from '../../shaders/cloud_coverage.wgsl?raw';
 
-const COVERAGE_W   = 512;
-const COVERAGE_H   = 256;
-// Must match const W : u32 = 512u and H : u32 = 256u in cloud_coverage.wgsl
+const CLOUD_OCTA_RES = 256;
+// Must match const OCTA_RES : u32 = 256u in cloud_coverage.wgsl and cloud_render.wgsl
 const UNIFORM_SIZE = 16; // 4 × f32
 
 export class CloudCoverageNode extends BaseNode {
@@ -38,7 +37,7 @@ export class CloudCoverageNode extends BaseNode {
 
     // Primary coverage buffer: one f32 per texel, read by CloudRenderNode each frame
     this._resources.createBuffer('cloud.coverage', {
-      size:  COVERAGE_W * COVERAGE_H * Float32Array.BYTES_PER_ELEMENT,
+      size:  CLOUD_OCTA_RES * CLOUD_OCTA_RES * Float32Array.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.STORAGE,
     });
 
@@ -84,8 +83,8 @@ export class CloudCoverageNode extends BaseNode {
     pass.setPipeline(this._pipeline);
     pass.setBindGroup(0, this._bindGroup);
     pass.dispatchWorkgroups(
-      Math.ceil(COVERAGE_W / 8),
-      Math.ceil(COVERAGE_H / 8),
+      Math.ceil(CLOUD_OCTA_RES / 8),
+      Math.ceil(CLOUD_OCTA_RES / 8),
     );
     pass.end();
   }

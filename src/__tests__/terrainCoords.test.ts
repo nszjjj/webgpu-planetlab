@@ -1,36 +1,77 @@
 import { describe, it, expect } from 'vitest';
-import { sphericalToIndex, TERRAIN_RESOLUTION } from '../utils/terrainCoords.ts';
+import { octEncode, octDecode, octToIndex, OCTA_RESOLUTION } from '../utils/octahedral.ts';
 
-describe('sphericalToIndex', () => {
-  it('maps north pole (θ=0, φ=0) to index 0', () => {
-    expect(sphericalToIndex(0, 0)).toBe(0);
+describe('octEncode / octDecode round-trip', () => {
+  it('north pole (0,1,0) encodes and decodes back', () => {
+    const [u, v] = octEncode(0, 1, 0);
+    const [x, y, z] = octDecode(u, v);
+    expect(Math.abs(x)).toBeLessThan(0.001);
+    expect(y).toBeCloseTo(1, 4);
+    expect(Math.abs(z)).toBeLessThan(0.001);
   });
 
-  it('maps south pole row (θ=π, φ=0) to index 261632', () => {
-    // i = floor(π/π × 511) = 511, j = 0 → 511 * 512 + 0
-    expect(sphericalToIndex(Math.PI, 0)).toBe(261632);
+  it('south pole (0,-1,0) encodes and decodes back', () => {
+    const [u, v] = octEncode(0, -1, 0);
+    const [x, y, z] = octDecode(u, v);
+    expect(Math.abs(x)).toBeLessThan(0.001);
+    expect(y).toBeCloseTo(-1, 4);
+    expect(Math.abs(z)).toBeLessThan(0.001);
   });
 
-  it('maps negative phi to same index as equivalent positive phi', () => {
-    // φ = -π and φ = π both normalize to the same grid column
-    const a = sphericalToIndex(Math.PI / 2, Math.PI);
-    const b = sphericalToIndex(Math.PI / 2, -Math.PI);
-    expect(a).toBe(b);
+  it('equator point (1,0,0) round-trips', () => {
+    const [u, v] = octEncode(1, 0, 0);
+    const [x, y, z] = octDecode(u, v);
+    expect(x).toBeCloseTo(1, 4);
+    expect(Math.abs(y)).toBeLessThan(0.001);
+    expect(Math.abs(z)).toBeLessThan(0.001);
   });
 
-  it('wraps phi values outside [-π, π] correctly', () => {
-    // -3π/2 is the same angle as π/2
-    const a = sphericalToIndex(Math.PI / 2, Math.PI / 2);
-    const b = sphericalToIndex(Math.PI / 2, -3 * Math.PI / 2);
-    expect(a).toBe(b);
+  it('negative z hemisphere round-trips', () => {
+    const [u, v] = octEncode(0, 0, -1);
+    const [x, y, z] = octDecode(u, v);
+    expect(Math.abs(x)).toBeLessThan(0.001);
+    expect(Math.abs(y)).toBeLessThan(0.001);
+    expect(z).toBeCloseTo(-1, 4);
   });
 
-  it('all sampled indices stay within buffer bounds', () => {
-    const size = TERRAIN_RESOLUTION * TERRAIN_RESOLUTION;
-    for (let k = 0; k < 10; k++) {
-      const theta = (k / 9) * Math.PI;
-      const phi   = (k / 9) * 2 * Math.PI;
-      const idx   = sphericalToIndex(theta, phi);
+  it('general direction round-trips within tolerance', () => {
+    const tests: [number, number, number][] = [
+      [ 0.577,  0.577,  0.577],
+      [-0.577,  0.577,  0.577],
+      [ 0.577, -0.577,  0.577],
+      [ 0.577,  0.577, -0.577],
+    ];
+    for (const [nx, ny, nz] of tests) {
+      const [u, v] = octEncode(nx, ny, nz);
+      const [rx, ry, rz] = octDecode(u, v);
+      expect(rx).toBeCloseTo(nx, 2);
+      expect(ry).toBeCloseTo(ny, 2);
+      expect(rz).toBeCloseTo(nz, 2);
+    }
+  });
+});
+
+describe('octToIndex', () => {
+  it('returns within buffer bounds for all six axis directions', () => {
+    const size = OCTA_RESOLUTION * OCTA_RESOLUTION;
+    const dirs: [number, number, number][] = [
+      [1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1],
+    ];
+    for (const d of dirs) {
+      const idx = octToIndex(d[0], d[1], d[2]);
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(idx).toBeLessThan(size);
+    }
+  });
+
+  it('samples evenly across octahedral UV space', () => {
+    const size = OCTA_RESOLUTION * OCTA_RESOLUTION;
+    for (let k = 0; k < 20; k++) {
+      const idx = octToIndex(
+        (k / 19) * 2 - 1,
+        ((k * 1.37) % 1) * 2 - 1,
+        ((k * 0.73) % 1) * 2 - 1,
+      );
       expect(idx).toBeGreaterThanOrEqual(0);
       expect(idx).toBeLessThan(size);
     }

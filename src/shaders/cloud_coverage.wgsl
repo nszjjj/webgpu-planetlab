@@ -1,6 +1,6 @@
 // src/shaders/cloud_coverage.wgsl
 // Compute pass: write FBM cloud coverage into a flat float32 storage buffer.
-// Buffer layout: cov[y * W + x] = density in [0, 1].
+// Buffer layout: cov[v * OCTA_RES + u] = density in [0, 1] via octahedral mapping.
 
 struct CoverageUniforms {
   time      : f32,  // FBM time offset for drift animation
@@ -12,9 +12,8 @@ struct CoverageUniforms {
 @group(0) @binding(0) var<uniform>             u   : CoverageUniforms;
 @group(0) @binding(1) var<storage, read_write> cov : array<f32>;
 
-const W  : u32 = 512u;
-const H  : u32 = 256u;
-const PI : f32 = 3.14159265358979;
+const OCTA_RES : u32 = 256u;
+const PI       : f32 = 3.14159265358979;
 
 fn hash3(p: vec3<f32>) -> f32 {
   var q = fract(p * 0.1031);
@@ -46,18 +45,27 @@ fn fbm5(p: vec3<f32>, freq: f32) -> f32 {
   return v;
 }
 
+fn oct_decode(uv: vec2<f32>) -> vec3<f32> {
+  let p = uv * 2.0 - 1.0;
+  let z = 1.0 - abs(p.x) - abs(p.y);
+  var n: vec3<f32>;
+  if (z >= 0.0) {
+    n = vec3<f32>(p.x, p.y, z);
+  } else {
+    n = vec3<f32>((1.0 - abs(p.y)) * select(-1.0, 1.0, p.x >= 0.0), (1.0 - abs(p.x)) * select(-1.0, 1.0, p.y >= 0.0), z);
+  }
+  return normalize(n);
+}
+
 @compute @workgroup_size(8, 8)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x >= W || gid.y >= H) { return; }
+  if (gid.x >= OCTA_RES || gid.y >= OCTA_RES) { return; }
 
-  let uf    = (f32(gid.x) + 0.5) / f32(W);
-  let vf    = (f32(gid.y) + 0.5) / f32(H);
-  let theta = vf * PI;
-  let phi   = uf * 2.0 * PI;
-  let sph   = vec3(sin(theta) * cos(phi), cos(theta), sin(theta) * sin(phi));
+  let uv  = vec2<f32>((f32(gid.x) + 0.5) / f32(OCTA_RES), (f32(gid.y) + 0.5) / f32(OCTA_RES));
+  let sph = oct_decode(uv);
 
   let raw     = fbm5(sph + u.time * 0.05, u.frequency);
   let density = clamp((raw - u.threshold) / max(1.0 - u.threshold, 1e-5), 0.0, 1.0);
 
-  cov[gid.y * W + gid.x] = density;
+  cov[gid.y * OCTA_RES + gid.x] = density;
 }

@@ -1,8 +1,8 @@
 // Pass A: FBM + Ridged + Worley noise → terrain.height storage buffer
-// Indexed by (i=θ-row, j=φ-col), same mapping as sphericalToIndex() on the CPU.
+// Indexed by (i=v-row, j=u-col) via octahedral mapping.
 
-const PI         : f32 = 3.14159265358979323846;
-const RESOLUTION : u32 = 512u;
+const PI        : f32 = 3.14159265358979323846;
+const OCTA_RES  : u32 = 512u;
 
 struct NoiseParams {
   continent_freq        : f32,
@@ -85,16 +85,32 @@ fn worley(p: vec3<f32>, freq: f32) -> f32 {
   return min_dist;
 }
 
+// ── Octahedral decode ─────────────────────────────────────────────────────
+
+fn oct_decode(uv: vec2<f32>) -> vec3<f32> {
+  let p = uv * 2.0 - 1.0;
+  let z = 1.0 - abs(p.x) - abs(p.y);
+  var n: vec3<f32>;
+  if (z >= 0.0) {
+    n = vec3<f32>(p.x, p.y, z);
+  } else {
+    n = vec3<f32>((1.0 - abs(p.y)) * select(-1.0, 1.0, p.x >= 0.0), (1.0 - abs(p.x)) * select(-1.0, 1.0, p.y >= 0.0), z);
+  }
+  return normalize(n);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x >= RESOLUTION || gid.y >= RESOLUTION) { return; }
+  if (gid.x >= OCTA_RES || gid.y >= OCTA_RES) { return; }
 
-  // (gid.x = i = θ-row, gid.y = j = φ-col) — matches sphericalToIndex()
-  let theta = f32(gid.x) / f32(RESOLUTION - 1u) * PI;
-  let phi   = f32(gid.y) / f32(RESOLUTION - 1u) * 2.0 * PI;
-  let pos   = vec3<f32>(sin(theta) * cos(phi), cos(theta), sin(theta) * sin(phi));
+  // Octahedral: (gid.x = v-row, gid.y = u-col)
+  let uv  = vec2<f32>(
+    (f32(gid.y) + 0.5) / f32(OCTA_RES),
+    (f32(gid.x) + 0.5) / f32(OCTA_RES),
+  );
+  let pos = oct_decode(uv);
 
   let continent = fbm(pos,    params.continent_freq, 6, params.continent_persistence);
   let mountain  = ridged(pos, params.mountain_freq,  4);
@@ -103,5 +119,5 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // detail is a distance field [0,1]; invert so high values = rougher surface
   let h = clamp(continent * 0.6 + mountain * 0.3 + (1.0 - detail) * 0.1, 0.0, 1.0);
 
-  height_buffer[gid.x * RESOLUTION + gid.y] = h;
+  height_buffer[gid.x * OCTA_RES + gid.y] = h;
 }

@@ -1,9 +1,9 @@
 // Planet render shader — vertex displacement via height_buffer, PBR fragment.
 // Uniform layout: PerFrame 208 bytes + MaterialUniforms 160 bytes.
 
-const PI              : f32 = 3.14159265358979323846;
-const TERRAIN_RES     : u32 = 512u;
-const AMBIENT         : f32 = 0.03;  // minimum light on dark side
+const PI         : f32 = 3.14159265358979323846;
+const OCTA_RES    : u32 = 512u;
+const AMBIENT     : f32 = 0.03;  // minimum light on dark side
 
 // ── BRDF Microfacet Functions ──────────────────────────────────────────────
 
@@ -72,9 +72,6 @@ fn tonemapReinhard(color: vec3f) -> vec3f {
   return color / (color + vec3(1.0));
 }
 
-override rings    : u32 = 128u;
-override segments : u32 = 128u;
-
 struct PerFrameUniforms {
   viewProj       : mat4x4<f32>,   // offset   0
   model          : mat4x4<f32>,   // offset  64
@@ -123,6 +120,10 @@ struct MaterialUniforms {
 @group(0) @binding(2) var<storage, read> splat_buffer  : array<u32>;
 @group(0) @binding(3) var<uniform>       materials     : MaterialUniforms;
 
+struct VertexInput {
+  @location(0) position : vec3<f32>,
+}
+
 struct MaterialParam {
   roughness : f32,
   metallic  : f32,
@@ -134,14 +135,20 @@ struct VertexOut {
   @location(1)       spherePos    : vec3<f32>,  // original unit-sphere pos for terrain lookup
 }
 
-fn sphere_pos_to_index(p: vec3<f32>) -> u32 {
-  let n     = normalize(p);
-  let theta = acos(clamp(n.y, -1.0, 1.0));
-  var phi   = atan2(n.z, n.x);
-  if (phi < 0.0) { phi += 2.0 * PI; }
-  let i = u32(clamp(theta / PI * f32(TERRAIN_RES - 1u), 0.0, f32(TERRAIN_RES - 1u)));
-  let j = u32(clamp(phi / (2.0 * PI) * f32(TERRAIN_RES - 1u), 0.0, f32(TERRAIN_RES - 1u)));
-  return i * TERRAIN_RES + j;
+fn oct_encode(n: vec3<f32>) -> vec2<f32> {
+  let absSum = abs(n.x) + abs(n.y) + abs(n.z);
+  var p = vec2<f32>(n.x, n.y) / absSum;
+  if (n.z < 0.0) {
+    p = (vec2<f32>(1.0) - abs(p.yx)) * select(vec2(-1.0), vec2(1.0), p >= vec2(0.0));
+  }
+  return p * 0.5 + 0.5;
+}
+
+fn oct_to_index(n: vec3<f32>) -> u32 {
+  let uv = oct_encode(normalize(n));
+  let i  = u32(clamp(uv.y * f32(OCTA_RES), 0.0, f32(OCTA_RES - 1u)));
+  let j  = u32(clamp(uv.x * f32(OCTA_RES), 0.0, f32(OCTA_RES - 1u)));
+  return i * OCTA_RES + j;
 }
 
 fn splat_to_color(mask: u32) -> vec3<f32> {
@@ -162,21 +169,10 @@ fn splat_to_material(mask: u32) -> MaterialParam {
 }
 
 @vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
-  let cols = segments + 1u;
-  let i    = vertexIndex / cols;
-  let j    = vertexIndex % cols;
+fn vs_main(in: VertexInput) -> VertexOut {
+  let localPos = in.position;
 
-  let theta = f32(i) / f32(rings)    * PI;
-  let phi   = f32(j) / f32(segments) * 2.0 * PI;
-
-  let localPos = vec3<f32>(
-    sin(theta) * cos(phi),
-    cos(theta),
-    sin(theta) * sin(phi),
-  );
-
-  let h         = height_buffer[sphere_pos_to_index(localPos)];
+  let h         = height_buffer[oct_to_index(localPos)];
   let displaced = localPos * (1.0 + h * perFrame.displaceScale);
 
   let worldNormal = normalize((perFrame.model * vec4<f32>(localPos, 0.0)).xyz);
@@ -191,7 +187,7 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-  let mask   = splat_buffer[sphere_pos_to_index(in.spherePos)];
+  let mask   = splat_buffer[oct_to_index(in.spherePos)];
   let albedo = splat_to_color(mask);
   let mat    = splat_to_material(mask);
 

@@ -2,9 +2,8 @@
 // Half-resolution fragment pass: ray-march spherical cloud shell.
 // Outputs rgba16float: RGB = in-scatter colour, A = transmittance (1 = clear, 0 = opaque).
 
-const PI         : f32 = 3.14159265358979;
-const COVERAGE_W : u32 = 512u;
-const COVERAGE_H : u32 = 256u;
+const PI       : f32 = 3.14159265358979;
+const OCTA_RES  : u32 = 256u;
 
 // Uniform buffer layout: 128 bytes
 struct CloudUniforms {
@@ -62,14 +61,21 @@ fn hg_phase(cosTheta: f32, g: f32) -> f32 {
   return (1.0 - g2) / (4.0 * PI * denom);
 }
 
-// Nearest-neighbour lookup into the flat coverage buffer.
+fn oct_encode(n: vec3<f32>) -> vec2<f32> {
+  let absSum = abs(n.x) + abs(n.y) + abs(n.z);
+  var p = vec2<f32>(n.x, n.y) / absSum;
+  if (n.z < 0.0) {
+    p = (vec2<f32>(1.0) - abs(p.yx)) * select(vec2(-1.0), vec2(1.0), p >= vec2(0.0));
+  }
+  return p * 0.5 + 0.5;
+}
+
+// Nearest-neighbour lookup into the flat octahedral coverage buffer.
 fn coverage_sample(spherePos: vec3<f32>) -> f32 {
-  let n     = normalize(spherePos);
-  let theta = acos(clamp(n.y, -1.0, 1.0));
-  let phi   = atan2(n.z, n.x) + PI;
-  let iu    = u32(clamp(phi   / (2.0 * PI) * f32(COVERAGE_W), 0.0, f32(COVERAGE_W) - 1.0));
-  let iv    = u32(clamp(theta / PI         * f32(COVERAGE_H), 0.0, f32(COVERAGE_H) - 1.0));
-  return coverage[iv * COVERAGE_W + iu];
+  let uv = oct_encode(normalize(spherePos));
+  let iu = u32(clamp(uv.x * f32(OCTA_RES), 0.0, f32(OCTA_RES) - 1.0));
+  let iv = u32(clamp(uv.y * f32(OCTA_RES), 0.0, f32(OCTA_RES) - 1.0));
+  return coverage[iv * OCTA_RES + iu];
 }
 
 // Hash-based step jitter — eliminates banding without a blue-noise texture.
