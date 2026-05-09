@@ -119,6 +119,7 @@ struct MaterialUniforms {
 @group(0) @binding(1) var<storage, read> height_buffer : array<f32>;
 @group(0) @binding(2) var<storage, read> splat_buffer  : array<u32>;
 @group(0) @binding(3) var<uniform>       materials     : MaterialUniforms;
+@group(0) @binding(4) var<storage, read> normal_buffer : array<f32>;
 
 struct VertexInput {
   @location(0) position : vec3<f32>,
@@ -133,6 +134,7 @@ struct VertexOut {
   @builtin(position) clipPosition : vec4<f32>,
   @location(0)       normal       : vec3<f32>,
   @location(1)       spherePos    : vec3<f32>,  // original unit-sphere pos for terrain lookup
+  @location(2)       worldPos     : vec3<f32>,  // displaced world position
 }
 
 fn oct_encode(n: vec3<f32>) -> vec2<f32> {
@@ -175,13 +177,20 @@ fn vs_main(in: VertexInput) -> VertexOut {
   let h         = height_buffer[oct_to_index(localPos)];
   let displaced = localPos * (1.0 + h * perFrame.displaceScale);
 
-  let worldNormal = normalize((perFrame.model * vec4<f32>(localPos, 0.0)).xyz);
+  let normalIdx   = oct_to_index(localPos) * 3u;
+  let localNormal = vec3<f32>(
+    normal_buffer[normalIdx],
+    normal_buffer[normalIdx + 1u],
+    normal_buffer[normalIdx + 2u],
+  );
+  let worldNormal = normalize((perFrame.model * vec4<f32>(localNormal, 0.0)).xyz);
   let worldPos    = (perFrame.model * vec4<f32>(displaced, 1.0)).xyz;
 
   var out: VertexOut;
   out.clipPosition = perFrame.viewProj * vec4<f32>(worldPos, 1.0);
   out.normal       = worldNormal;
   out.spherePos    = localPos;
+  out.worldPos     = worldPos;
   return out;
 }
 
@@ -192,7 +201,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
   let mat    = splat_to_material(mask);
 
   let N = normalize(in.normal);
-  let V = normalize(perFrame.cameraPos - (perFrame.model * vec4<f32>(in.spherePos, 1.0)).xyz);
+  let V = normalize(perFrame.cameraPos - in.worldPos);
   let L = normalize(perFrame.sunDir.xyz);
 
   // Cook-Torrance direct lighting

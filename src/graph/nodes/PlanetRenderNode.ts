@@ -73,6 +73,11 @@ export class PlanetRenderNode extends BaseNode {
           visibility: GPUShaderStage.FRAGMENT,
           buffer: { type: 'uniform' },
         },
+        {
+          binding: 4,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: 'read-only-storage' },
+        },
       ],
     });
 
@@ -120,6 +125,11 @@ export class PlanetRenderNode extends BaseNode {
       throw new Error('PlanetRenderNode.build(): terrain buffers not found');
     }
 
+    const normalBuffer = this._resources.getBuffer('terrain.normal');
+    if (!normalBuffer) {
+      throw new Error('PlanetRenderNode.build(): terrain.normal not found');
+    }
+
     this._bindGroup = ctx.device.createBindGroup({
       layout: bindGroupLayout,
       entries: [
@@ -127,6 +137,7 @@ export class PlanetRenderNode extends BaseNode {
         { binding: 1, resource: { buffer: heightBuffer } },
         { binding: 2, resource: { buffer: splatBuffer } },
         { binding: 3, resource: { buffer: this._materialBuffer } },
+        { binding: 4, resource: { buffer: normalBuffer } },
       ],
     });
 

@@ -6,6 +6,7 @@ import { CameraComponent }       from '../ecs/components/CameraComponent.ts';
 import { PlanetComponent }       from '../ecs/components/PlanetComponent.ts';
 import { SunComponent }          from '../ecs/components/SunComponent.ts';
 import { ComputeNoiseNode }      from './nodes/ComputeNoiseNode.ts';
+import { NormalComputeNode }     from './nodes/NormalComputeNode.ts';
 import { PlanetRenderNode }      from './nodes/PlanetRenderNode.ts';
 import { CloudCoverageNode }     from './nodes/CloudCoverageNode.ts';
 import { CloudRenderNode }       from './nodes/CloudRenderNode.ts';
@@ -70,6 +71,7 @@ export class GraphBuilder {
 
     // ── Nodes ──────────────────────────────────────────────────────────────
     const noiseNode         = new ComputeNoiseNode(resources, pipelines);
+    const normalNode        = new NormalComputeNode(resources, pipelines);
     const planetNode        = new PlanetRenderNode(scene, resources, pipelines, materialParams);
     const cloudCoverageNode = new CloudCoverageNode(resources, pipelines, cloudParams);
     const cloudRenderNode   = new CloudRenderNode(scene, resources, pipelines, cloudParams);
@@ -77,6 +79,7 @@ export class GraphBuilder {
     const debugWireframe    = new DebugWireframeNode(resources, pipelines);
 
     noiseNode.build(buildCtx);
+    normalNode.build(buildCtx);
     planetNode.build(buildCtx);
     cloudCoverageNode.build(buildCtx);
     cloudRenderNode.build(buildCtx);
@@ -85,6 +88,7 @@ export class GraphBuilder {
 
     const graph = new RenderGraph(scene);
     graph.addNode(noiseNode);
+    graph.addNode(normalNode);
     graph.addNode(planetNode);
     graph.addNode(cloudCoverageNode);
     graph.addNode(cloudRenderNode);
