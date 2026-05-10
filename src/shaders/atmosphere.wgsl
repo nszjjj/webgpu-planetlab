@@ -3,19 +3,16 @@
 // Planet is centered at world origin. Planet radius = 1.0 scene unit.
 
 const PI  : f32 = 3.14159265358979323846;
-const H_R : f32 = 0.08;    // Rayleigh scale height (fraction of planet radius)
-const H_M : f32 = 0.012;   // Mie scale height
-const SCATTER_SCALE : f32 = 6.0;  // artistic scale; tune if atmosphere is too faint/bright
 
 struct AtmosphereUniforms {
   sunDir           : vec3<f32>,   // offset  0
   planetRadius     : f32,         // offset 12
   atmosphereRadius : f32,         // offset 16
-  _pad0            : f32,         // offset 20
-  _pad1            : f32,         // offset 24
-  _pad2            : f32,         // offset 28
+  H_R              : f32,         // offset 20  ← was _pad0
+  H_M              : f32,         // offset 24  ← was _pad1
+  _pad2            : f32,         // offset 28  (pad before cameraPos vec3)
   cameraPos        : vec3<f32>,   // offset 32
-  _pad3            : f32,         // offset 44
+  _pad3            : f32,         // offset 44  (pad after cameraPos vec3)
   betaR            : vec3<f32>,   // offset 48
   betaM            : f32,         // offset 60
   mieG             : f32,         // offset 64
@@ -29,6 +26,7 @@ struct AtmosphereUniforms {
 @group(0) @binding(1) var          sceneColor : texture_2d<f32>;
 @group(0) @binding(2) var          sceneDepth : texture_depth_2d;
 @group(0) @binding(3) var          cloudColor : texture_2d<f32>;
+@group(0) @binding(4) var          lutTex    : texture_3d<f32>;
 
 // --- Vertex shader: full-screen quad (6 vertices, no VBO) ---
 
@@ -72,20 +70,6 @@ fn mie_phase(cosTheta: f32, g: f32) -> f32 {
   let g2    = g * g;
   let denom = max((2.0 + g2) * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5), 1e-7);
   return (3.0 / (8.0 * PI)) * ((1.0 - g2) * (1.0 + cosTheta * cosTheta)) / denom;
-}
-
-// Integrate optical depth from `pos` toward `dir` for `maxDist` distance.
-// Returns vec2(Rayleigh depth, Mie depth).
-fn optical_depth(pos: vec3<f32>, dir: vec3<f32>, maxDist: f32, steps: u32) -> vec2<f32> {
-  let stepLen = maxDist / f32(steps);
-  var depth   = vec2(0.0);
-  var p       = pos + dir * (stepLen * 0.5);
-  for (var i = 0u; i < steps; i++) {
-    let h = max(length(p) - atm.planetRadius, 0.0);
-    depth += vec2(exp(-h / H_R), exp(-h / H_M)) * stepLen;
-    p     += dir * stepLen;
-  }
-  return depth;
 }
 
 const DEPTH_SIGMA : f32 = 10.0;  // weight decay per NDC depth unit; tune if cloud edges bleed across depth discontinuities
@@ -147,51 +131,67 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
   let phaseR   = rayleigh_phase(cosTheta);
   let phaseM   = mie_phase(cosTheta, atm.mieG);
 
-  let stepLen   = (tMax - tMin) / f32(atm.numSamples);
-  var sumR      = vec3(0.0);
-  var sumM      = 0.0;
-  var optDepthR = 0.0;
-  var optDepthM = 0.0;
+  let viewSamples = 16u;
+  let stepLen   = (tMax - tMin) / f32(viewSamples);
+  let atmHeight = atm.atmosphereRadius - atm.planetRadius;
+
+  var accum = vec3(0.0);
+  var odR   = 0.0;
+  var odM   = 0.0;
 
   var t = tMin + stepLen * 0.5;
-  for (var i = 0u; i < atm.numSamples; i++) {
-    let p  = camPos + rayDir * t;
-    let h  = max(length(p) - atm.planetRadius, 0.0);
+  for (var i = 0u; i < viewSamples; i++) {
+    let p = camPos + rayDir * t;
+    let h = max(length(p) - atm.planetRadius, 0.0);
 
-    let densR = exp(-h / H_R) * stepLen;
-    let densM = exp(-h / H_M) * stepLen;
+    let densR = exp(-h / atm.H_R);
+    let densM = exp(-h / atm.H_M);
 
-    // Shadow test: is this point occluded from the sun by the planet body?
-    let planetOcclude = intersect_sphere(p, atm.sunDir, atm.planetRadius);
-    let in_shadow     = planetOcclude.x > 0.0; // planet is ahead on sun ray
+    // Sample LUT with trilinear interpolation (textureLoad avoids non-uniform CF restriction)
+    let r_norm = clamp(h / atmHeight, 0.0, 1.0);
+    let mu_s   = dot(normalize(p), atm.sunDir);
+    let mu_v   = dot(rayDir, normalize(p));
 
-    if (!in_shadow) {
-      // Shadow ray toward sun — only when sun is visible from this point
-      let sunHit  = intersect_sphere(p, atm.sunDir, atm.atmosphereRadius);
-      let sunDist = max(sunHit.y, 0.0);
-      let odSun   = optical_depth(p, atm.sunDir, sunDist, atm.numLightSamples);
+    let uv_mu_v = mu_v * 0.5 + 0.5;
+    let uv_mu_s = mu_s * 0.5 + 0.5;
 
-      // Transmittance uses depth from tMin to entry of this segment (before adding densR/M)
-      let tau           = atm.betaR * (optDepthR + odSun.x)
-                        + vec3<f32>(atm.betaM * (optDepthM + odSun.y));
-      let transmittance = exp(-tau);
+    let dims = vec3<f32>(textureDimensions(lutTex));
+    let tc   = vec3<f32>(uv_mu_v, uv_mu_s, r_norm) * dims - 0.5;
+    let base = vec3<i32>(floor(tc));
+    let frac = tc - vec3<f32>(base);
+    let bc   = clamp(base, vec3<i32>(0), vec3<i32>(dims) - vec3<i32>(2));
 
-      sumR += densR * transmittance;
-      sumM += densM * dot(transmittance, vec3<f32>(1.0 / 3.0)); // average over RGB
-    }
+    let c000 = textureLoad(lutTex, bc + vec3<i32>(0,0,0), 0);
+    let c100 = textureLoad(lutTex, bc + vec3<i32>(1,0,0), 0);
+    let c010 = textureLoad(lutTex, bc + vec3<i32>(0,1,0), 0);
+    let c110 = textureLoad(lutTex, bc + vec3<i32>(1,1,0), 0);
+    let c001 = textureLoad(lutTex, bc + vec3<i32>(0,0,1), 0);
+    let c101 = textureLoad(lutTex, bc + vec3<i32>(1,0,1), 0);
+    let c011 = textureLoad(lutTex, bc + vec3<i32>(0,1,1), 0);
+    let c111 = textureLoad(lutTex, bc + vec3<i32>(1,1,1), 0);
 
-    optDepthR += densR;
-    optDepthM += densM;
+    let c00 = mix(c000, c100, frac.x);
+    let c01 = mix(c001, c101, frac.x);
+    let c10 = mix(c010, c110, frac.x);
+    let c11 = mix(c011, c111, frac.x);
+    let c0  = mix(c00, c10, frac.y);
+    let c1  = mix(c01, c11, frac.y);
+    let lutVal = mix(c0, c1, frac.z);
+
+    let stepScatter = lutVal.rgb * stepLen;
+
+    let viewT = exp(-(atm.betaR * odR + vec3(atm.betaM * odM)));
+    accum   += viewT * stepScatter;
+
+    odR += densR * stepLen;
+    odM += densM * stepLen;
 
     t += stepLen;
   }
 
-  let rayleigh   = sumR * atm.betaR * phaseR;
-  let mie_color  = vec3<f32>(sumM * atm.betaM * phaseM);
-  let inScatter  = (rayleigh + mie_color) * SCATTER_SCALE;
-  let viewTau    = atm.betaR * optDepthR + vec3<f32>(atm.betaM * optDepthM);
+  let viewTau    = atm.betaR * odR + vec3(atm.betaM * odM);
   let viewT      = exp(-viewTau);
-  let finalColor = color * viewT + inScatter;
+  let finalColor = color * viewT + accum;
 
   // Bilateral upsample cloud RT and composite on top of atmosphere
   let cloudTexel = texel / 2;

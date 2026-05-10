@@ -81,6 +81,8 @@ export const DEFAULT_CLASSIFY_PARAMS: ClassifyParams = {
 export interface AtmosphereParams {
   planetRadius: number;
   atmosphereRadius: number;
+  H_R: number;
+  H_M: number;
   betaR: [number, number, number];
   betaM: number;
   mieG: number;
@@ -91,6 +93,8 @@ export interface AtmosphereParams {
 export const DEFAULT_ATMOSPHERE_PARAMS: AtmosphereParams = {
   planetRadius: 1.0,
   atmosphereRadius: 1.12,
+  H_R: 0.08,
+  H_M: 0.012,
   // betaR normalized from Nishita (1993) for unit-sphere planet with H_R=0.08.
   // Ratio preserved from Rayleigh λ⁻⁴: ~1 : 2.4 : 4.1
   betaR: [0.15, 0.35, 0.86],
@@ -98,6 +102,47 @@ export const DEFAULT_ATMOSPHERE_PARAMS: AtmosphereParams = {
   mieG: 0.76,
   numSamples: 16,
   numLightSamples: 8,
+};
+
+// ── Atmosphere LUT ──────────────────────────────────────────────────────
+
+export type LUTPreset = 'low' | 'medium' | 'high' | 'ultra';
+
+export interface LUTResolution {
+  r: number;
+  muS: number;
+  muV: number;
+}
+
+export const LUT_PRESETS: Record<LUTPreset, LUTResolution> = {
+  low:    { r: 8,  muS: 16, muV: 16 },
+  medium: { r: 16, muS: 32, muV: 32 },
+  high:   { r: 32, muS: 64, muV: 64 },
+  ultra:  { r: 64, muS: 128, muV: 128 },
+};
+
+export interface AtmosphereLUTParams {
+  planetRadius: number;
+  atmosphereRadius: number;
+  betaR: [number, number, number];
+  betaM: number;
+  H_R: number;
+  H_M: number;
+  mieG: number;
+  numSamples: number;
+  numLightSamples: number;
+}
+
+export const DEFAULT_ATMOSPHERE_LUT_PARAMS: AtmosphereLUTParams = {
+  planetRadius: 1.0,
+  atmosphereRadius: 1.12,
+  betaR: [0.15, 0.35, 0.86],
+  betaM: 0.08,
+  H_R: 0.08,
+  H_M: 0.012,
+  mieG: 0.76,
+  numSamples: 32,
+  numLightSamples: 16,
 };
 
 export interface CloudParams {

@@ -21,8 +21,13 @@ export class DebugWireframeNode extends BaseNode {
   private _depthFormat!: GPUTextureFormat;
   private _colorFormat!: GPUTextureFormat;
 
-  constructor(private _resources: ResourceManager, private _pipelines: PipelineManager) {
+  private _resources: ResourceManager;
+  private _pipelines: PipelineManager;
+
+  constructor(resources: ResourceManager, pipelines: PipelineManager) {
     super();
+    this._resources = resources;
+    this._pipelines = pipelines;
   }
 
   override build(ctx: BuildContext): void {
@@ -126,7 +131,6 @@ export class DebugWireframeNode extends BaseNode {
         view: ctx.depthView,
         depthLoadOp: 'load',
         depthStoreOp: 'store',
-        depthWriteEnabled: false,
       },
     });
     pass.setPipeline(this._pipeline);

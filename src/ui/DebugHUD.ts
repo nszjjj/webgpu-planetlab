@@ -9,11 +9,18 @@ export class DebugHUD {
   private _cloudExpanded = true;
   private _pbrExpanded   = true;
 
+  private _wireframe:      DebugWireframeNode;
+  private _cloudParams:    CloudParams;
+  private _materialParams: MaterialParams;
+
   constructor(
-    private _wireframe:      DebugWireframeNode,
-    private _cloudParams:    CloudParams,
-    private _materialParams: MaterialParams,
+    wireframe:      DebugWireframeNode,
+    cloudParams:    CloudParams,
+    materialParams: MaterialParams,
   ) {
+    this._wireframe      = wireframe;
+    this._cloudParams    = cloudParams;
+    this._materialParams = materialParams;
     this._buildPanel();
     this._bindKeys();
   }

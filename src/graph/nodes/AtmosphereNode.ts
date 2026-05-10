@@ -40,17 +40,21 @@ export class AtmosphereNode extends BaseNode {
   private _cachedSunEntity:    Entity | undefined;
   private _cachedPlanetEntity: Entity | undefined;
 
+  private _lutTextureName: string;
+
   constructor(
     scene: Scene,
     resources: ResourceManager,
     pipelines: PipelineManager,
     params: AtmosphereParams = DEFAULT_ATMOSPHERE_PARAMS,
+    lutTextureName: string = 'atmosphere.lut.high',
   ) {
     super();
     this._scene     = scene;
     this._resources = resources;
     this._pipelines = pipelines;
     this._params    = params;
+    this._lutTextureName = lutTextureName;
   }
 
   override build(ctx: BuildContext): void {
@@ -67,8 +71,10 @@ export class AtmosphereNode extends BaseNode {
           texture: { sampleType: 'float', viewDimension: '2d' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT,
           texture: { sampleType: 'depth', viewDimension: '2d' } },
-        { binding: 3, visibility: GPUShaderStage.FRAGMENT,   // cloud colour (rgba16float)
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT,
           texture: { sampleType: 'float', viewDimension: '2d' } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT,
+          texture: { sampleType: 'float', viewDimension: '3d' } },
       ],
     });
 
@@ -88,10 +94,8 @@ export class AtmosphereNode extends BaseNode {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    // 初始构建 bindGroup
     this._rebuildBindGroup(ctx.surfaceRes);
 
-    // resize 时纹理重建后重新构建 bindGroup
     ctx.surfaceRes.onChanged(() => this._rebuildBindGroup(ctx.surfaceRes));
 
     this._cachedSunEntity    = this._scene.getEntitiesWith(SunComponent)[0];
@@ -99,6 +103,11 @@ export class AtmosphereNode extends BaseNode {
   }
 
   private _rebuildBindGroup(surfaceRes: import('../../core/SurfaceResources.ts').SurfaceResources): void {
+    const lutTexture = this._resources.getTexture(this._lutTextureName);
+    if (!lutTexture) {
+      throw new Error(`AtmosphereNode: LUT texture "${this._lutTextureName}" not found`);
+    }
+
     this._bindGroup = this._device.createBindGroup({
       layout: this._bindGroupLayout,
       entries: [
@@ -106,6 +115,7 @@ export class AtmosphereNode extends BaseNode {
         { binding: 1, resource: surfaceRes.getView('scene.color') },
         { binding: 2, resource: surfaceRes.getView('scene.depth') },
         { binding: 3, resource: surfaceRes.getView('cloud.color') },
+        { binding: 4, resource: lutTexture.createView() },
       ],
     });
   }
@@ -114,11 +124,9 @@ export class AtmosphereNode extends BaseNode {
     const cam    = this._scene.mainCamera.getComponent(CameraComponent)!;
     const camPos = this._scene.mainCamera.transform.position;
 
-    // Sun direction: prefer cached SunComponent, fall back to default position
     const sunComp = this._cachedSunEntity?.getComponent(SunComponent);
     const sunPos  = sunComp?.worldPosition ?? DEFAULT_SUN_POS;
 
-    // Planet position from cached entity
     const planetPos = this._cachedPlanetEntity?.transform.position;
 
     const dx  = sunPos[0] - (planetPos ? planetPos[0]! : 0);
@@ -127,7 +135,6 @@ export class AtmosphereNode extends BaseNode {
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
     if (len < 1e-6) {
-      // Sun at planet center — default to +Y direction
       this._sunDir[0] = 0; this._sunDir[1] = 1; this._sunDir[2] = 0;
     } else {
       this._sunDir[0] = dx / len;
@@ -135,36 +142,31 @@ export class AtmosphereNode extends BaseNode {
       this._sunDir[2] = dz / len;
     }
 
-    // Compute inverse view-projection into pre-allocated buffer
     const vp = cam.getVPMatrix(camPos);
     mat4.inverse(vp, this._invVPOut);
 
     const data = this._uniformData;
-    data.fill(0); // clear padding fields
+    data.fill(0);
 
-    // Layout matches AtmosphereUniforms struct in atmosphere.wgsl (offsets in floats):
-    data[0]  = this._sunDir[0]!;   // sunDir.x      (float offset 0)
-    data[1]  = this._sunDir[1]!;   // sunDir.y
-    data[2]  = this._sunDir[2]!;   // sunDir.z
+    data[0]  = this._sunDir[0]!;
+    data[1]  = this._sunDir[1]!;
+    data[2]  = this._sunDir[2]!;
     const p  = this._params;
-    data[3]  = p.planetRadius;     // planetRadius  (float offset 3)
-    data[4]  = p.atmosphereRadius; // atmosphereRadius
-    // [5..7] = _pad0,1,2 (zero)
-    data[8]  = camPos[0]!;         // cameraPos.x   (float offset 8)
+    data[3]  = p.planetRadius;
+    data[4]  = p.atmosphereRadius;
+    data[5]  = p.H_R;
+    data[6]  = p.H_M;
+    data[8]  = camPos[0]!;
     data[9]  = camPos[1]!;
     data[10] = camPos[2]!;
-    // [11] = _pad3 (zero)
-    data[12] = p.betaR[0];         // betaR.x       (float offset 12)
+    data[12] = p.betaR[0];
     data[13] = p.betaR[1];
     data[14] = p.betaR[2];
-    data[15] = p.betaM;            // betaM         (float offset 15)
-    data[16] = p.mieG;             // mieG          (float offset 16)
-    // [17..18] = numSamples/numLightSamples as u32 — use DataView for explicit byte offsets
+    data[15] = p.betaM;
+    data[16] = p.mieG;
     const dv = new DataView(data.buffer);
-    dv.setUint32(68, p.numSamples,      true); // byte offset 68, little-endian
-    dv.setUint32(72, p.numLightSamples, true); // byte offset 72
-    // [19] = _pad4 (zero)
-    // invViewProj at float offset 20 (byte offset 80)
+    dv.setUint32(68, p.numSamples,      true);
+    dv.setUint32(72, p.numLightSamples, true);
     data.set(this._invVPOut, 20);
 
     ctx.device.queue.writeBuffer(this._uniformBuffer, 0, data);
@@ -182,7 +184,7 @@ export class AtmosphereNode extends BaseNode {
 
     pass.setPipeline(this._pipeline);
     pass.setBindGroup(0, this._bindGroup);
-    pass.draw(6); // 6 vertices = 2 triangles = full-screen quad
+    pass.draw(6);
     pass.end();
   }
 }

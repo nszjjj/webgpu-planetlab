@@ -10,6 +10,7 @@ import { NormalComputeNode }     from './nodes/NormalComputeNode.ts';
 import { PlanetRenderNode }      from './nodes/PlanetRenderNode.ts';
 import { CloudCoverageNode }     from './nodes/CloudCoverageNode.ts';
 import { CloudRenderNode }       from './nodes/CloudRenderNode.ts';
+import { AtmosphereLUTNode }     from './nodes/AtmosphereLUTNode.ts';
 import { AtmosphereNode }        from './nodes/AtmosphereNode.ts';
 import { DebugWireframeNode }    from './nodes/DebugWireframeNode.ts';
 import { OrbitCameraController } from '../controllers/OrbitCameraController.ts';
@@ -77,12 +78,14 @@ export class GraphBuilder {
     const cloudRenderNode   = new CloudRenderNode(scene, resources, pipelines, cloudParams);
     const atmosNode         = new AtmosphereNode(scene, resources, pipelines);
     const debugWireframe    = new DebugWireframeNode(resources, pipelines);
+    const lutNode           = new AtmosphereLUTNode(resources, pipelines, 'high');
 
     noiseNode.build(buildCtx);
     normalNode.build(buildCtx);
     planetNode.build(buildCtx);
     cloudCoverageNode.build(buildCtx);
     cloudRenderNode.build(buildCtx);
+    lutNode.build(buildCtx);     // must build before atmosNode — creates atmosphere.lut.high
     atmosNode.build(buildCtx);
     debugWireframe.build(buildCtx);
 
@@ -92,6 +95,7 @@ export class GraphBuilder {
     graph.addNode(planetNode);
     graph.addNode(cloudCoverageNode);
     graph.addNode(cloudRenderNode);
+    graph.addNode(lutNode);
     graph.addNode(atmosNode);
     graph.addNode(debugWireframe);
 
