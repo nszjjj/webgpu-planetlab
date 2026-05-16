@@ -63,7 +63,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let p_down  = displaced_position(i,       j_down,  d);
   let p_up    = displaced_position(i,       j_up,    d);
 
-  let n = normalize(cross(p_right - p_left, p_up - p_down));
+  let sphereDir = oct_decode(uv_at(i, j));
+  let n_raw     = cross(p_right - p_left, p_up - p_down);
+  // At the octahedral seam (z≈0 boundary) the cross product can flip inward;
+  // always ensure the normal faces the same hemisphere as the sphere outward direction.
+  let n = normalize(select(-n_raw, n_raw, dot(n_raw, sphereDir) >= 0.0));
 
   let idx = (i * OCTA_RES + j) * 3u;
   normal_buffer[idx]     = n.x;

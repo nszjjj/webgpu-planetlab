@@ -133,13 +133,14 @@ export class AtmosphereLUTNode extends BaseNode {
     if (this._generated) return;
 
     const res = LUT_PRESETS[this._preset];
+
     const pass = encoder.beginComputePass();
     pass.setPipeline(this._pipeline);
     pass.setBindGroup(0, this._bindGroup);
     pass.dispatchWorkgroups(
       Math.ceil(res.muV / 8),
       Math.ceil(res.muS / 8),
-      Math.ceil(res.r / 8),
+      res.r,
     );
     pass.end();
 

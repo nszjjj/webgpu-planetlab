@@ -2,8 +2,9 @@
 // Half-resolution fragment pass: ray-march spherical cloud shell.
 // Outputs rgba16float: RGB = in-scatter colour, A = transmittance (1 = clear, 0 = opaque).
 
-const PI       : f32 = 3.14159265358979;
-const OCTA_RES  : u32 = 256u;
+const PI                 : f32 = 3.14159265358979;
+const OCTA_RES           : u32 = 256u;
+const CLOUD_SCATTER_SCALE: f32 = 15.0;  // artistic multiplier; compensates for single-scatter-only model (no multiple-scatter) and matches atmosphere SCATTER_SCALE range
 
 // Uniform buffer layout: 128 bytes
 struct CloudUniforms {
@@ -147,10 +148,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
       // Planet occlusion test: skip in-scatter if planet body blocks sun
       let planetOcc = intersect_sphere(p, u.sunDir, u.planetRadius);
       if (planetOcc.x <= 0.0 && transmittance > 0.01) {
-        let phaseHG    = hg_phase(cosTheta, u.mieG);
-        // Beer's Powder: adds dark-edge effect on thick cloud faces
-        let beerPowder = 2.0 * exp(-tau) * (1.0 - exp(-2.0 * tau));
-        inScatter += tau * u.scatterAlbedo * phaseHG * beerPowder * transmittance * sunColor;
+        let phaseHG  = hg_phase(cosTheta, u.mieG);
+        // Blend HG with isotropic (1/(4π)) to approximate multiple-scatter brightness;
+        // pure single-scatter HG at 90° gives ~0.032 vs isotropic ~0.08 — side-lit clouds would be nearly black otherwise.
+        let phaseIso = 1.0 / (4.0 * PI);
+        let phase    = mix(phaseHG, phaseIso, 0.5);
+        inScatter   += transmittance * tau * u.scatterAlbedo * phase * CLOUD_SCATTER_SCALE * sunColor;
       }
     }
 

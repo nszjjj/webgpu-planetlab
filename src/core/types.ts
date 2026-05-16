@@ -92,7 +92,7 @@ export interface AtmosphereParams {
 
 export const DEFAULT_ATMOSPHERE_PARAMS: AtmosphereParams = {
   planetRadius: 1.0,
-  atmosphereRadius: 1.12,
+  atmosphereRadius: 1.20,
   H_R: 0.08,
   H_M: 0.012,
   // betaR normalized from Nishita (1993) for unit-sphere planet with H_R=0.08.
@@ -135,7 +135,7 @@ export interface AtmosphereLUTParams {
 
 export const DEFAULT_ATMOSPHERE_LUT_PARAMS: AtmosphereLUTParams = {
   planetRadius: 1.0,
-  atmosphereRadius: 1.12,
+  atmosphereRadius: 1.20,
   betaR: [0.15, 0.35, 0.86],
   betaM: 0.08,
   H_R: 0.08,
@@ -159,9 +159,9 @@ export interface CloudParams {
 }
 
 export const DEFAULT_CLOUD_PARAMS: CloudParams = {
-  cloudInnerRadius:  1.03,
-  cloudOuterRadius:  1.08,
-  extinction:        8.0,
+  cloudInnerRadius:  1.02,
+  cloudOuterRadius:  1.10,
+  extinction:        60.0,
   scatterAlbedo:     0.9,
   mieG:              0.6,
   scaleHeight:       0.3,

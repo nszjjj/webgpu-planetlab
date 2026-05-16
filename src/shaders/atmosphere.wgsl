@@ -2,7 +2,8 @@
 // Nishita (1993) single-scattering atmosphere.
 // Planet is centered at world origin. Planet radius = 1.0 scene unit.
 
-const PI  : f32 = 3.14159265358979323846;
+const PI           : f32 = 3.14159265358979323846;
+const SCATTER_SCALE: f32 = 6.0;  // artistic boost — matches old per-pixel raymarch scale
 
 struct AtmosphereUniforms {
   sunDir           : vec3<f32>,   // offset  0
@@ -191,7 +192,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
 
   let viewTau    = atm.betaR * odR + vec3(atm.betaM * odM);
   let viewT      = exp(-viewTau);
-  let finalColor = color * viewT + accum;
+  let finalColor = color * viewT + accum * SCATTER_SCALE;
 
   // Bilateral upsample cloud RT and composite on top of atmosphere
   let cloudTexel = texel / 2;
