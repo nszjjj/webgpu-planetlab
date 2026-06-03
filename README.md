@@ -13,6 +13,10 @@ npm test         # 运行测试
 
 需要支持 WebGPU 的浏览器（Chrome/Edge 113+、Firefox Nightly）。
 
+---
+
+使用 Github Pages 预览：[Github Pages - webgpu-planetlab](https://nszjjj.github.io/webgpu-planetlab/)
+
 ## 已实现功能
 
 ### 程序化地形

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  base: '/webgpu-planetlab/',
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
