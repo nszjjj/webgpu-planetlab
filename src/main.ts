@@ -1,21 +1,15 @@
 // src/main.ts
-import { initWebGPU }           from './core/initWebGPU.ts';
-import { CanvasSurfaceManager } from './core/CanvasSurfaceManager.ts';
-import { WebGPUEngine }         from './core/WebGPUEngine.ts';
-import { GraphBuilder }         from './graph/GraphBuilder.ts';
-import { DebugHUD }             from './ui/DebugHUD.ts';
+import { initWebGPU }           from './framework/core/initWebGPU.ts';
+import { CanvasSurfaceManager } from './framework/core/CanvasSurfaceManager.ts';
+import { WebGPUContext }        from './framework/core/WebGPUContext.ts';
+import { bootstrap }            from './demos/planet/index.ts';
 
 async function main(): Promise<void> {
   const canvas  = document.getElementById('webgpu-canvas') as HTMLCanvasElement;
   const device  = await initWebGPU();
-  const surface = new CanvasSurfaceManager(canvas, device);
-  const engine  = new WebGPUEngine(device);
-  engine.addSurface(surface);
-  const { debugWireframe, cloudParams, materialParams } = GraphBuilder.build(engine, canvas);
-  engine.start();
-  if (import.meta.env.DEV) {
-    new DebugHUD(debugWireframe, cloudParams, materialParams);
-  }
+  const context = new WebGPUContext(device);
+  context.addSurface(new CanvasSurfaceManager(canvas, device));
+  bootstrap(context, canvas);
 }
 
 main().catch((err: unknown) => {

@@ -70,17 +70,25 @@ terrain.splat                            scene.depth                            
 
 ```
 src/
-├── main.ts                         # 应用入口，组合根
-├── core/                           # 引擎核心（WebGPUEngine、RenderGraph、资源/管线管理）
-├── ecs/                            # ECS 框架（Entity、Transform、Scene、Component）
-├── graph/
-│   ├── GraphBuilder.ts             # 渲染图组装
-│   ├── GraphDebugUI.ts             # [Phase 2] 节点性能调试面板
-│   └── nodes/                      # 渲染节点（每个 Pass 一个 Node）
-├── shaders/                        # WGSL 着色器
-├── controllers/                    # 相机控制器
-├── ui/                             # Debug HUD
-└── utils/                          # 八面体映射、二十面体生成
+├── framework/                      ← 通用 WebGPU 渲染框架
+│   ├── core/                       # WebGPUContext、FrameLoop、RenderGraph、资源/管线管理
+│   ├── ecs/                        # ECS 框架（Entity、Transform、Scene、Component）
+│   ├── graph/                      # BaseNode、Handle 类型系统、图上下文
+│   ├── renderer3d/                 # SceneTargets 约定（颜色、深度、法线 RT）
+│   └── ui/                         # HUDPanel/Section/Slider/Toggle + GraphDebugUI
+├── demos/
+│   └── planet/                     ← 星球 demo 业务层
+│       ├── components/             # PlanetComponent、SunComponent 等业务组件
+│       ├── nodes/                  # PlanetRenderNode、CloudRenderNode、AtmosphereNode 等
+│       ├── shaders/                # 星球专属 WGSL 着色器
+│       ├── params/                 # 星球参数预设（草原、冰封、气态等）
+│       ├── graph.ts                # buildPlanetGraph function
+│       ├── controllers/            # 星球交互控制器
+│       └── ui/                     # PlanetHUD
+├── main.ts                         # 应用入口（通过单行 import 选择 demo）
+└── __tests__/
+    ├── framework/                  # 框架层单元测试
+    └── demos/planet/               # 业务层单元测试
 ```
 
 ## 计划功能

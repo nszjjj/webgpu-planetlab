@@ -21,6 +21,40 @@
 - 避免 Unity URP 的隐式 Feature 顺序依赖和历史包袱
 - 充分利用 WebGPU Pipeline 不可变、Bind Group 显式、资源自动 barrier 的设计哲学
 
+## Framework / Business 分层
+
+项目采用严格的分层架构，确保框架代码与业务逻辑的解耦：
+
+**`src/framework/`** — 通用 WebGPU 渲染框架（demo 无关）
+- `core/` — WebGPU 初始化、FrameLoop、RenderGraph 执行引擎、资源/管线管理
+- `graph/` — BaseNode 抽象类、Handle 类型系统、图上下文接口
+- `ecs/` — Scene、Entity、Transform、CameraComponent（通用 ECS 组件）
+- `renderer3d/` — SceneTargets 约定（颜色、深度、法线渲染目标）
+- `ui/` — 通用 HUD 控件（HUDPanel、Section、Slider、Toggle）+ GraphDebugUI
+
+**`src/demos/planet/`** — 星球 demo 业务层（planet 特有）
+- `components/` — PlanetComponent、SunComponent、WindComponent 等业务组件
+- `nodes/` — PlanetRenderNode、CloudRenderNode、AtmosphereNode 等业务节点
+- `shaders/` — 星球专属 WGSL 着色器
+- `params/` — 星球参数预设（草原、冰封、气态等）
+- `graph.ts` — buildPlanetGraph 函数（组装业务 Graph）
+- `controllers/` — 星球交互控制器
+- `ui/` — PlanetHUD（业务专属 UI）
+
+**Node 契约** — 所有 Node 遵循统一接口，通过 `this._inputs` 的类型化 Handle 访问数据，**不得直接访问 Scene 对象或调用 `scene.getEntitiesWith` 等查询方法**。这样每个 Node 都独立可测试、可重用。
+
+**添加新 demo 的步骤**：
+1. 在 `src/demos/<name>/` 创建新目录，拷贝 `planet/` 骨架（components、nodes、shaders 等）
+2. 修改 `src/main.ts` 的单行导入：`import { bootstrap } from './demos/<name>/index.ts'`
+3. 运行 `npm run check-boundaries` 验证分层边界未被违反
+
+**边界检查工具**：`npm run check-boundaries` 会自动检查：
+- `framework/` 是否意外 import `demos/`
+- `framework/core/` 是否意外 import `framework/renderer3d/`
+- 节点是否直接访问 `scene.getEntitiesWith` 或 `scene.mainCamera`
+
+如果检查失败，表示分层设计被违反，需要回到相应 phase 进行重构。
+
 ## 文件夹结构（必须严格遵循）
 
 ```
@@ -34,7 +68,7 @@ webgpulab/
 │
 ├── src/
 │   ├── core/                        ← 引擎核心框架（尽量保持稳定）
-│   │   ├── WebGPUEngine.ts          ← Device、Queue、CanvasContext、帧循环
+│   │   ├── WebGPUContext.ts         ← Device、Queue、CanvasContext、帧循环
 │   │   ├── RenderGraph.ts           ← Render Graph 核心：节点管理、依赖构建、Pass 录制
 │   │   ├── ResourceManager.ts       ← 统一管理所有 Buffer、Texture
 │   │   ├── PipelineManager.ts       ← 缓存所有 RenderPipeline 和 ComputePipeline
